@@ -1,0 +1,109 @@
+Personalized 3‑Day Python AI Course Creator:​
+​
+Your task: ​
+Please make a duplicate of this test and use it as a checklist ​
+​
+Build an AI‑powered learning system that delivers course content, administers tests,
+tracks mistakes, and provides an interactive Q&A sandbox over a three‑day Python
+curriculum. At the end, all data must be stored for ongoing review.
+
+You may use any AI tools (e.g. ChatGPT, GitHub Copilot, Bard, etc.) to assist with any part of
+this test—content creation, exam generation, feedback analysis, sandbox implementation, data
+storage, documentation, and beyond. ​
+​
+Recommended AI framework to use: Memgpt, Langchain, Langgraph.
+
+
+
+
+​
+Day 1: Content Delivery & Assessment
+      ​ Module Generation
+             ​ Produce Day 1 course materials in Markdown (.md) or JSON (.json) format.
+             ​ Cover core Python fundamentals (variables, data types, control structures).​
+
+      ​ 1‑Hour Test Exam
+             ​ Generate a timed, one‑hour exam covering Day 1 topics.
+             ​ Include multiple‑choice, short‑answer, and coding exercises.​
+
+      ​ Automated Feedback
+             ​ Analyze submitted answers to:
+                     ​ Identify incorrect or incomplete solutions.
+                     ​ Provide detailed explanations for each mistake.​
+
+      ​ Q&A Sandbox
+
+       Implement an interactive chat interface where the candidate can:
+
+                     ​ Ask follow‑up questions about feedback.
+                     ​ Request deeper clarifications or worked examples.​
+Day 2: Adaptive Learning & Reinforcement
+   ​ New Module Generation
+          ​ Create Day 2 materials in .md or .json, focusing on intermediate Python
+            (functions, modules, error handling).​
+
+   ​ Mistake Memory
+           ​ Retrieve Day 1 errors and fold them into Day 2 test questions in modified form to
+             reinforce correct understanding.​
+
+   ​ 1‑Hour Test Exam
+          ​ Include:
+                  ​ Fresh questions on Day 2 topics.
+                  ​ “Relearn” questions derived from Day 1 mistakes.​
+
+   ​ Feedback & Sandbox
+          ​ Provide the same detailed analysis as Day 1.
+          ​ Continue Q&A support for both new material and remediation.​
+
+
+
+
+Day 3: Mastery & Retention
+   ​ Final Module Generation
+           ​ Deliver Day 3 materials (file I/O, object‑oriented programming, key libraries).​
+
+   ​ Comprehensive Final Exam
+         ​ One‑hour test comprising:
+                ​ New‑concept questions (Day 3).
+                ​ Mixed review questions from Days 1 & 2 to assess retention.​
+
+   ​ Final Feedback & Sandbox
+           ​ Full post‑exam analysis.
+           ​ Interactive sandbox for any last questions and code demonstrations.​
+​
+Post‑Course Data Management
+     ​ Data Storage
+             ​ Persist all modules, exam questions, candidate answers, feedback reports, and
+               chat logs in a database.​
+
+     ​ Ongoing Access
+            ​ Provide continuous access to the Q&A sandbox so the candidate can revisit
+              mistakes or explore advanced topics indefinitely.​
+
+
+
+
+What We Expect from You
+     ​ End‑to‑End Implementation of:
+             ​ Content generators for Days 1–3 (.md/.json outputs)
+             ​ Test‑creation engine with timed delivery
+             ​ Automated grading & mistake analysis
+             ​ Interactive Q&A sandbox supporting unlimited follow‑ups
+             ​ Persistent storage layer for all artifacts​
+
+     ​ Clear Documentation
+             ​ System architecture and API specs
+             ​ Sample input/output for each component​
+
+     ​ Demo Script
+           ​ Show one full day’s workflow: module → exam → feedback → sandbox
+           ​ Explain how the system adapts for Day 2 and Day 3 based on tracked mistakes​
+
+     ​ Tools & Resources
+             ​ You’re free to use any AI tools at any stage.
+
+
+
+Deliver a concise README outlining deployment and testing steps. We value clarity,
+robustness, and intelligent adaptation to the learner’s performance. Good luck!
+

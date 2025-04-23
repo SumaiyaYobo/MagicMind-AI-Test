@@ -1,0 +1,43 @@
+// Define the ExamResult model for storing exam results
+model ExamResult {
+  id                    String   @id @default(uuid())
+  userId                String   // The user who took the exam
+  courseId              String   // The course the exam was for
+  courseName            String   // Name of the course
+  examDate              String   // Date when the exam was taken
+  difficulty            String   // Difficulty level of the exam
+  timeLimit             Int      // Time limit in seconds
+  timeSpent             Int      // Time spent in seconds
+  
+  // Store complex objects as JSON strings
+  mcqQuestions          String   @db.Text // JSON string of MCQ questions with answers
+  shortAnswerQuestions  String   @db.Text // JSON string of short answer questions with answers
+  codingProblems        String   @db.Text // JSON string of coding problems with solutions
+  
+  // Scores for each section
+  mcqScore              Float
+  mcqTotal              Float
+  mcqPercentage         Float
+  
+  shortAnswerScore      Float
+  shortAnswerTotal      Float
+  shortAnswerPercentage Float
+  
+  codingScore           Float
+  codingTotal           Float
+  codingPercentage      Float
+  
+  // Overall scores
+  totalScore            Float
+  totalPossible         Float
+  percentage            Float
+  
+  // Feedback on the exam
+  feedback              String   @db.Text
+  
+  // Timestamps
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  @@map("exam_results")
+} 
