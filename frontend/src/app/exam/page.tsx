@@ -298,6 +298,81 @@ export default function ExamPage() {
         }
       }
       
+      // Collect wrong MCQ answers
+      const wrongMCQs = examState.mcq_questions
+        .map((question, index) => {
+          const userAnswer = mcqAnswers[index] || '';
+          if (userAnswer !== question.correctAnswer) {
+            return {
+              questionType: 'MCQ',
+              questionId: index.toString(),
+              question: question.question,
+              userAnswer: userAnswer,
+              correctAnswer: question.correctAnswer,
+              explanation: question.explanation,
+              courseId: selectedCourse?.id
+            };
+          }
+          return null;
+        })
+        .filter(Boolean);
+      
+      // Collect wrong short answers
+      // We'll consider an answer wrong if it scored less than 7 out of 10 points
+      const wrongShortAnswers = examState.short_answer_questions
+        .map((question, index) => {
+          const userAnswer = shortAnswers[index] || '';
+          const evaluation = shortAnswerEvaluations.find(e => e.questionId === question.id);
+          const pointsEarned = evaluation?.pointsEarned || 0;
+          
+          if (pointsEarned < 7) {
+            return {
+              questionType: 'ShortAnswer',
+              questionId: question.id.toString(),
+              question: question.question,
+              userAnswer: userAnswer,
+              correctAnswer: question.reference_answer,
+              explanation: evaluation?.feedback || 'Review the reference answer for guidance.',
+              courseId: selectedCourse?.id
+            };
+          }
+          return null;
+        })
+        .filter(Boolean);
+      
+      // Combine all wrong answers
+      const allWrongAnswers = [...wrongMCQs, ...wrongShortAnswers];
+      console.log('Wrong answers to save:', allWrongAnswers);
+      
+      // Save wrong answers to database
+      if (allWrongAnswers.length > 0) {
+        try {
+          const saveWrongAnswersResponse = await fetch('http://localhost:8000/exams/save_wrong_answers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              wrong_answers: allWrongAnswers,
+              userId: userId,
+              courseId: selectedCourse?.id || '',
+              courseName: selectedCourse?.title || ''
+            }),
+          });
+          
+          if (!saveWrongAnswersResponse.ok) {
+            const errorData = await saveWrongAnswersResponse.text();
+            console.error('Failed to save wrong answers:', errorData);
+            toast.error('Failed to save wrong answers');
+          } else {
+            const result = await saveWrongAnswersResponse.json();
+            console.log('Wrong answers saved successfully:', result);
+            toast.success(`Saved ${result.mcqCount + result.shortAnswerCount} wrong answers for review`);
+          }
+        } catch (saveError) {
+          console.error('Error saving wrong answers:', saveError);
+          toast.error('Error saving wrong answers');
+        }
+      }
+      
       // Create exam record to save to database
       const examRecord: ExamRecord = {
         userId: userId, // Use the existing userId from the component
@@ -1169,12 +1244,18 @@ export default function ExamPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-950 via-violet-950/20 to-gray-950 p-4 md:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
+        {/* <div className="flex items-center justify-between">
           <h1 className="text-2xl md:text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-fuchsia-300">
             Exam Center
           </h1>
-        </div>
-
+          <a 
+            href="/exam/wrong-answers" 
+            className="px-4 py-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md transition-colors"
+          >
+            View Wrong Answers
+          </a>
+        </div> */}
+        
         {!examStarted ? (
           <div className="bg-gray-900/60 border border-violet-500/30 backdrop-blur-sm rounded-xl p-6 shadow-lg">
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1279,9 +1360,12 @@ export default function ExamPage() {
                 <button
                   onClick={submitExam}
                   className="px-4 py-2 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-lg 
-                             hover:shadow-lg transition-all duration-200 font-medium"
+                             hover:shadow-lg transition-all duration-200 font-medium
+                             flex items-center gap-2"
+                  disabled={loading}
                 >
-                  Complete Exam
+                  {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {loading ? 'Submitting...' : 'Complete Exam'}
                 </button>
                 
                 <button

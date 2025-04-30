@@ -14,9 +14,29 @@ import { RadioGroup, RadioGroupItem, Progress } from "@/components/ui/quiz-compo
 import dynamic from "next/dynamic"
 
 // Dynamically import Confetti to avoid SSR issues
-const Confetti = dynamic(() => import('react-confetti'), {
+const ReactConfetti = dynamic(() => import('react-confetti'), {
   ssr: false
 })
+
+// Define props interface for the wrapper
+interface ConfettiProps {
+  width: number;
+  height: number;
+  recycle?: boolean;
+  numberOfPieces?: number;
+}
+
+// Wrapper component with proper typing
+function Confetti({ width, height, recycle = false, numberOfPieces = 200 }: ConfettiProps) {
+  return (
+    <ReactConfetti
+      width={width}
+      height={height}
+      recycle={recycle}
+      numberOfPieces={numberOfPieces}
+    />
+  )
+}
 
 interface QuizQuestion {
   question: string
@@ -73,6 +93,12 @@ export default function PythonCourse() {
   const [shortAnswerResults, setShortAnswerResults] = useState<any>(null)
   const [shortAnswerLoading, setShortAnswerLoading] = useState(false)
   const [shortAnswerRetakeLoading, setShortAnswerRetakeLoading] = useState(false)
+  
+  // Track unlocked Python days
+  const [unlockedDays, setUnlockedDays] = useState<number[]>([1]) // Day 1 is always unlocked
+  const [generatingContent, setGeneratingContent] = useState(false)
+  const [examResults, setExamResults] = useState<any[]>([])
+  const [fetchingExams, setFetchingExams] = useState(false)
 
   // Update window size for confetti
   useEffect(() => {
@@ -99,22 +125,337 @@ export default function PythonCourse() {
   useEffect(() => {
     if (userId) {
       fetchContents()
+      fetchCompletedExams()
     }
   }, [userId])
+
+  // Fetch completed exams to determine which days to unlock
+  const fetchCompletedExams = async () => {
+    setFetchingExams(true)
+    try {
+      const response = await fetch(`http://localhost:8000/exams/user/${userId}`)
+      
+      console.log('Exam API response status:', response.status)
+      
+      if (response.ok) {
+        const data = await response.json()
+        console.log('Exam results fetched:', data)
+        setExamResults(data)
+        
+        // Determine which days to unlock based on exam results
+        const newUnlockedDays = [1] // Day 1 is always unlocked
+        
+        // Loop through exam results and unlock next day if passing grade (>= 60%)
+        data.forEach((exam: any) => {
+          // Extract the day number from the course name (Python Day-X)
+          const match = exam.courseName.match(/Python Day-(\d+)/)
+          if (match) {
+            const completedDay = parseInt(match[1])
+            const nextDay = completedDay + 1
+            
+            // If they passed this exam and the next day is valid (2 or 3)
+            if (exam.percentage >= 60 && nextDay <= 3) {
+              console.log(`Unlocking Day-${nextDay} based on exam result for Day-${completedDay} with score ${exam.percentage}%`)
+              newUnlockedDays.push(nextDay)
+            }
+          }
+        })
+        
+        // Update unlocked days
+        console.log('Unlocked days after checking exams:', Array.from(new Set(newUnlockedDays)))
+        setUnlockedDays(Array.from(new Set(newUnlockedDays)))
+      } else {
+        // Handle error response
+        const errorData = await response.json().catch(() => null)
+        console.error("Error fetching exam results:", errorData || response.statusText)
+        
+        // Continue with default unlock state (Day-1 only)
+        console.log("Using default unlock state (Day-1 only)")
+      }
+    } catch (error) {
+      console.error("Failed to fetch exam results:", error)
+      // Continue with default unlock state
+    } finally {
+      setFetchingExams(false)
+    }
+  }
 
   const fetchContents = async () => {
     try {
       const response = await fetch(`http://localhost:8000/content/user/${userId}`)
       const data = await response.json()
       // Filter for Python course content (Day-1, Day-2, Day-3)
-      const pythonContent = data.filter((content: any) => 
+      const pythonContent = data.filter((content: Content) => 
         content.title.includes('Python Day')
       )
+      
+      // Determine which days are unlocked based on the existing content
+      const days = pythonContent.map((content: Content) => {
+        // Extract day number from title (Python Day-1, Python Day-2, etc.)
+        const match = content.title.match(/Python Day-(\d+)/)
+        return match ? parseInt(match[1]) : 0
+      })
+      
       setContents(pythonContent)
       setLoading(false)
     } catch (error) {
       toast.error("Failed to fetch contents")
       setLoading(false)
+    }
+  }
+
+  // Save exam result to database
+  const saveExamResult = async (day: number, courseName: string, percentage: number, score: number, total: number) => {
+    try {
+      // Create simplified exam record
+      const examRecord = {
+        userId: userId,
+        courseId: `python-day-${day}`,
+        courseName: courseName,
+        examDate: new Date().toISOString(),
+        difficulty: day === 1 ? 'beginner' : day === 2 ? 'intermediate' : 'advanced',
+        timeLimit: 1800, // 30 minutes in seconds
+        timeSpent: 900, // Placeholder - 15 minutes in seconds
+        mcqQuestions: JSON.stringify(quiz?.quiz || []),
+        shortAnswerQuestions: '[]',
+        codingProblems: '[]',
+        mcqScore: score,
+        mcqTotal: total,
+        mcqPercentage: percentage,
+        shortAnswerScore: 0,
+        shortAnswerTotal: 0,
+        shortAnswerPercentage: 0,
+        codingScore: 0,
+        codingTotal: 0,
+        codingPercentage: 0,
+        totalScore: score,
+        totalPossible: total,
+        percentage: percentage,
+        feedback: percentage >= 80 
+          ? "Excellent work! You've mastered this section." 
+          : percentage >= 60 
+            ? "Good job! You're on the right track." 
+            : "Keep practicing. You'll get it!"
+      }
+      
+      console.log('Saving exam result to database:', examRecord)
+      
+      // Save to database
+      const response = await fetch('http://localhost:8000/exams/save_result', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(examRecord)
+      })
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Failed to save exam results:', errorText)
+        
+        // Show error message to user
+        toast.error("Failed to save exam results. The course is still unlocked for this session.")
+        
+        // Still unlock the next day in the UI for this session
+        if (percentage >= 60) {
+          const match = courseName.match(/Python Day-(\d+)/)
+          if (match) {
+            const currentDay = parseInt(match[1])
+            const nextDay = currentDay + 1
+            
+            if (nextDay <= 3 && !unlockedDays.includes(nextDay)) {
+              setUnlockedDays(prev => [...prev, nextDay])
+              toast.success(`Python Day-${nextDay} has been unlocked!`)
+            }
+          }
+        }
+      } else {
+        console.log('Exam results saved successfully!')
+        toast.success("Exam results saved successfully!")
+        // Refresh exam results
+        fetchCompletedExams()
+      }
+    } catch (error) {
+      console.error('Error saving exam results:', error)
+      toast.error("Failed to save exam results due to a network error.")
+    }
+  }
+
+  // Function to handle when a Python day card is clicked
+  const handleDayClick = async (dayNumber: number) => {
+    // Check if the content for this day already exists
+    const existingContent = contents.find(content => 
+      content.title === `Python Day-${dayNumber}`
+    )
+    
+    if (existingContent) {
+      // If content exists, just select it
+      setSelectedContent(existingContent)
+    } else if (unlockedDays.includes(dayNumber)) {
+      // If day is unlocked but content doesn't exist, generate it
+      setGeneratingContent(true)
+      
+      try {
+        let title = `Python Day-${dayNumber}`
+        let prompt = ""
+        
+        // Set the base prompt based on the day
+        if (dayNumber === 2) {
+          prompt = "Python functions, modules, error handling"
+          
+          // Fetch wrong answers from Day-1 to include in the prompt
+          prompt = await fetchWrongAnswersForPrompt(1, prompt, dayNumber)
+        } else if (dayNumber === 3) {
+          prompt = "Python file I/O, object‑oriented programming, key libraries"
+          
+          // Fetch wrong answers from Day-2 to include in the prompt
+          prompt = await fetchWrongAnswersForPrompt(2, prompt, dayNumber)
+        }
+        
+        console.log(`Final prompt for Day-${dayNumber}:`, prompt)
+        
+        // Create the request body object
+        const requestBody = {
+            title,
+            prompt,
+            public: true,
+            userId,
+        };
+        
+        // Log the request body for debugging
+        console.log(`Request body for content creation:`, JSON.stringify(requestBody));
+        
+        // Call the API to create content
+        const response = await fetch("http://localhost:8000/content/create", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(requestBody),
+        })
+        
+        if (!response.ok) throw new Error("Failed to create content")
+        
+        const data = await response.json()
+        
+        // Add the new content to the state
+        setContents(prev => [...prev, data])
+        setSelectedContent(data)
+        toast.success(`Python Day-${dayNumber} content generated successfully!`)
+      } catch (error) {
+        console.error(error)
+        toast.error(`Failed to generate Python Day-${dayNumber} content`)
+      } finally {
+        setGeneratingContent(false)
+      }
+    } else {
+      // If day is locked, show a message
+      toast.error(`Complete Python Day-${dayNumber-1} quiz first to unlock this content`)
+    }
+  }
+  
+  // Function to fetch wrong answers from previous days and include in prompt
+  const fetchWrongAnswersForPrompt = async (previousDay: number, basePrompt: string, currentDay: number) => {
+    try {
+      // First try to get wrong answers from the wrong_answers endpoint
+      const wrongAnswersResponse = await fetch(`http://localhost:8000/exams/wrong_answers/${userId}`)
+      
+      if (wrongAnswersResponse.ok) {
+        const wrongAnswersData = await wrongAnswersResponse.json()
+        console.log(`Wrong answers data for Day-${previousDay}:`, wrongAnswersData)
+        
+        // Filter wrong answers for the specific previous day
+        const previousDayWrongAnswers = wrongAnswersData.filter((answer: any) => 
+          answer.courseName && answer.courseName.includes(`Python Day-${previousDay}`)
+        )
+        
+        // If there are wrong answers for the previous day
+        if (previousDayWrongAnswers.length > 0) {
+          // Create a detailed section for wrong answers to include in the prompt
+          let wrongAnswersPrompt = `\n\nFocus on these concepts that the student had difficulty with in Day-${previousDay}:\n`
+          
+          // Add wrong MCQ questions and answers
+          const mcqWrongAnswers = previousDayWrongAnswers.filter((a: any) => a.questionType === "MCQ")
+          if (mcqWrongAnswers.length > 0) {
+            wrongAnswersPrompt += "\nMultiple Choice Questions they got wrong:\n"
+            
+            mcqWrongAnswers.forEach((mcq: any, index: number) => {
+              wrongAnswersPrompt += `${index + 1}. Question: ${mcq.question}\n`
+              wrongAnswersPrompt += `   Correct Answer: ${mcq.correctAnswer}\n`
+              wrongAnswersPrompt += `   Their Answer: ${mcq.userAnswer}\n`
+              if (mcq.explanation) {
+                wrongAnswersPrompt += `   Explanation: ${mcq.explanation}\n`
+              }
+              wrongAnswersPrompt += "\n"
+            })
+          }
+          
+          // Add wrong short answer questions and answers
+          const shortAnswerWrongAnswers = previousDayWrongAnswers.filter((a: any) => a.questionType === "ShortAnswer")
+          if (shortAnswerWrongAnswers.length > 0) {
+            wrongAnswersPrompt += "\nShort Answer Questions they got wrong:\n"
+            
+            shortAnswerWrongAnswers.forEach((sa: any, index: number) => {
+              wrongAnswersPrompt += `${index + 1}. Question: ${sa.question}\n`
+              wrongAnswersPrompt += `   Expected Answer: ${sa.correctAnswer}\n`
+              wrongAnswersPrompt += `   Their Answer: ${sa.userAnswer}\n`
+              if (sa.explanation) {
+                wrongAnswersPrompt += `   Feedback: ${sa.explanation}\n`
+              }
+              wrongAnswersPrompt += "\n"
+            })
+          }
+          
+          // Then fetch exam records to get overall performance
+          const examsResponse = await fetch(`http://localhost:8000/exams/user/${userId}`)
+          if (examsResponse.ok) {
+            const examsData = await examsResponse.json()
+            
+            // Filter for the previous day's exams
+            const previousDayExams = examsData.filter((exam: any) => 
+              exam.courseName && exam.courseName.includes(`Python Day-${previousDay}`)
+            )
+            
+            if (previousDayExams.length > 0) {
+              // Get the most recent exam (first one)
+              const latestExam = previousDayExams[0]
+              wrongAnswersPrompt += `\nOverall performance on Day-${previousDay}: ${latestExam.percentage}%\n`
+              
+              // Add specific instructions based on their performance
+              if (latestExam.percentage < 70) {
+                wrongAnswersPrompt += `The student struggled with Day-${previousDay} concepts. Please include more examples and explanations.\n`
+              } else if (latestExam.percentage < 90) {
+                wrongAnswersPrompt += `The student did reasonably well on Day-${previousDay}, but could use reinforcement of key concepts.\n`
+              } else {
+                wrongAnswersPrompt += `The student did very well on Day-${previousDay}, but would benefit from advanced applications of these concepts.\n`
+              }
+            }
+          }
+          
+          // Update the prompt with the wrong answers section
+          let enhancedPrompt = basePrompt;
+          if (currentDay === 2) {
+            // For Day-2, append wrong answers from Day-1 to the base prompt
+            enhancedPrompt = `${basePrompt}\n${wrongAnswersPrompt}\n\nTeach Python functions, modules, and error handling while addressing these areas of difficulty.`
+          } else if (currentDay === 3) {
+            // For Day-3, append wrong answers from Day-2 to the base prompt
+            enhancedPrompt = `${basePrompt}\n${wrongAnswersPrompt}\n\nTeach Python file I/O, object-oriented programming, and key libraries while addressing these areas of difficulty.`
+          }
+          
+          console.log(`Enhanced prompt for Day-${currentDay} with wrong answers from Day-${previousDay}:`, enhancedPrompt)
+          return enhancedPrompt
+        } else {
+          console.log(`No wrong answers found for Day-${previousDay}`)
+          // If no wrong answers, just use the base prompt
+          return basePrompt
+        }
+      } else {
+        console.error("Error fetching wrong answers:", await wrongAnswersResponse.text())
+        // If error, just use the base prompt
+        return basePrompt
+      }
+    } catch (error) {
+      console.error("Error processing wrong answers for prompt:", error)
+      // If error, just use the base prompt
+      return basePrompt
     }
   }
 
@@ -213,6 +554,30 @@ export default function PythonCourse() {
 
   const submitQuiz = () => {
     setQuizSubmitted(true)
+    
+    // If quiz is passed, save the quiz result as an exam
+    if (selectedContent && quiz) {
+      const score = getScore()
+      const percentage = Math.round((score / quiz.quiz.length) * 100)
+      
+      // Extract current day number from selected content
+      const match = selectedContent.title.match(/Python Day-(\d+)/)
+      if (match) {
+        const currentDay = parseInt(match[1])
+        const nextDay = currentDay + 1
+        
+        // Save the exam result if score is passing (e.g., 60% or higher)
+        if (percentage >= 60) {
+          saveExamResult(currentDay, selectedContent.title, percentage, score, quiz.quiz.length)
+          
+          // Unlock the next day if it's not already unlocked and it's a valid day (2 or 3)
+          if (nextDay <= 3 && !unlockedDays.includes(nextDay)) {
+            setUnlockedDays(prev => [...prev, nextDay])
+            toast.success(`Python Day-${nextDay} has been unlocked!`)
+          }
+        }
+      }
+    }
   }
 
   const resetQuiz = () => {
@@ -298,7 +663,7 @@ export default function PythonCourse() {
             >
               {retakeLoading ? (
                 <>
-                  <Spinner />
+                  <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-white"></div>
                   <span>Generating Quiz...</span>
                 </>
               ) : (
@@ -670,7 +1035,7 @@ export default function PythonCourse() {
           >
             {shortAnswerLoading ? (
               <>
-                <Spinner />
+                <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-white"></div>
                 <span className="ml-2">Evaluating...</span>
               </>
             ) : (
@@ -731,7 +1096,7 @@ export default function PythonCourse() {
             >
               {shortAnswerRetakeLoading ? (
                 <>
-                  <Spinner />
+                  <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-white"></div>
                   <span>Generating Questions...</span>
                 </>
               ) : (
@@ -831,7 +1196,7 @@ export default function PythonCourse() {
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <div className="text-center space-y-4">
-            <Spinner />
+            <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-primary mx-auto"></div>
             <p className="text-muted-foreground">Loading course content...</p>
           </div>
         </div>
@@ -852,24 +1217,74 @@ export default function PythonCourse() {
           {!selectedContent ? (
             <>
               <h2 className="text-2xl font-semibold text-foreground">Your Learning Contents</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {contents.map((content, index) => (
-                  <Card 
-                    key={content.id || index} 
-                    className="hover:shadow-lg transition-shadow cursor-pointer border-border bg-card"
-                    onClick={() => setSelectedContent(content)}
-                  >
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-lg text-foreground">{content.title}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-muted-foreground">
-                        {content.prompt?.substring(0, 100)}
-                        {content.prompt && content.prompt.length > 100 ? '...' : ''}
-                      </p>
-                    </CardContent>
-                  </Card>
-                ))}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {[1, 2, 3].map((day) => {
+                  // Find content for this day if it exists
+                  const dayContent = contents.find(content => 
+                    content.title === `Python Day-${day}`
+                  )
+                  
+                  // Determine if this day is unlocked
+                  const isUnlocked = unlockedDays.includes(day)
+                  
+                  return (
+                    <Card 
+                      key={day} 
+                      className={`group transition-all duration-300 transform hover:-translate-y-1 overflow-hidden rounded-xl border-0 ${
+                        isUnlocked ? 'hover:shadow-xl cursor-pointer' : 'opacity-70 cursor-not-allowed'
+                      }`}
+                      onClick={() => isUnlocked && handleDayClick(day)}
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-br from-blue-600/80 via-indigo-500/70 to-purple-600/80 opacity-90 z-0" />
+                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,theme(colors.purple.300/20%),transparent_70%)]" />
+                      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-400 to-purple-500 z-10" />
+                      
+                      <div className="relative z-10">
+                        <CardHeader className="pb-0">
+                          <div className="mb-1 flex justify-between items-center">
+                            <span className="px-2 py-1 rounded-md text-xs font-bold bg-white/20 text-white backdrop-blur-sm">
+                              {day === 1 ? 'Beginner' : 
+                               day === 2 ? 'Intermediate' : 'Advanced'}
+                            </span>
+                            <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
+                              <span className="text-white text-xs font-bold">{day}</span>
+                            </div>
+                          </div>
+                          <CardTitle className="text-lg font-bold text-white drop-shadow-sm">
+                            Python Day-{day}
+                            {!isUnlocked && <span className="ml-2 text-xs">🔒</span>}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="pt-3">
+                          <p className="text-sm text-white/80 line-clamp-3 drop-shadow-sm">
+                            {day === 1 ? "Variables, Data Types, Control Structures" : 
+                             day === 2 ? "Functions, Modules, Error Handling" : 
+                             "File I/O, Object-Oriented Programming, Key Libraries"}
+                          </p>
+                        </CardContent>
+                        <CardFooter className="pt-3 pb-4">
+                          <Button 
+                            variant="secondary" 
+                            size="sm" 
+                            className={`text-xs font-semibold bg-white/20 text-white transition-colors backdrop-blur-sm w-full ${
+                              isUnlocked ? 'hover:bg-white/30' : ''
+                            }`}
+                            disabled={!isUnlocked || generatingContent}
+                          >
+                            {generatingContent && dayContent === undefined && day !== 1 ? (
+                              <div className="flex items-center">
+                                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-b-2 border-primary"></div>
+                                <span>Generating Content...</span>
+                              </div>
+                            ) : (
+                              <>Start Learning →</>
+                            )}
+                          </Button>
+                        </CardFooter>
+                      </div>
+                    </Card>
+                  )
+                })}
               </div>
             </>
           ) : (
@@ -889,7 +1304,7 @@ export default function PythonCourse() {
                 >
                   {quizLoading ? (
                     <>
-                      <Spinner />
+                      <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-white"></div>
                       <span className="ml-2">Generating Quiz...</span>
                     </>
                   ) : (
@@ -904,7 +1319,7 @@ export default function PythonCourse() {
                 >
                   {shortAnswerLoading ? (
                     <>
-                      <Spinner />
+                      <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-white"></div>
                       <span className="ml-2">Generating Questions...</span>
                     </>
                   ) : (
@@ -917,6 +1332,15 @@ export default function PythonCourse() {
             </div>
           )}
         </div>
+      )}
+      
+      {showConfetti && windowSize.width > 0 && (
+        <Confetti
+          width={windowSize.width}
+          height={windowSize.height}
+          recycle={false}
+          numberOfPieces={200}
+        />
       )}
     </div>
   )

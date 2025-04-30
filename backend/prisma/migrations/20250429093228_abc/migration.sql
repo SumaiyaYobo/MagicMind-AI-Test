@@ -1,0 +1,31 @@
+-- CreateTable
+CREATE TABLE "ExamResult" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "courseId" TEXT NOT NULL,
+    "courseName" TEXT NOT NULL,
+    "examDate" TEXT NOT NULL,
+    "difficulty" TEXT NOT NULL,
+    "timeLimit" INTEGER NOT NULL,
+    "timeSpent" INTEGER NOT NULL,
+    "mcqQuestions" TEXT NOT NULL,
+    "shortAnswerQuestions" TEXT NOT NULL,
+    "codingProblems" TEXT NOT NULL,
+    "mcqScore" DOUBLE PRECISION NOT NULL,
+    "mcqTotal" DOUBLE PRECISION NOT NULL,
+    "mcqPercentage" DOUBLE PRECISION NOT NULL,
+    "shortAnswerScore" DOUBLE PRECISION NOT NULL,
+    "shortAnswerTotal" DOUBLE PRECISION NOT NULL,
+    "shortAnswerPercentage" DOUBLE PRECISION NOT NULL,
+    "codingScore" DOUBLE PRECISION NOT NULL,
+    "codingTotal" DOUBLE PRECISION NOT NULL,
+    "codingPercentage" DOUBLE PRECISION NOT NULL,
+    "totalScore" DOUBLE PRECISION NOT NULL,
+    "totalPossible" DOUBLE PRECISION NOT NULL,
+    "percentage" DOUBLE PRECISION NOT NULL,
+    "feedback" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ExamResult_pkey" PRIMARY KEY ("id")
+);

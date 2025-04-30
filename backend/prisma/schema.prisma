@@ -18,6 +18,7 @@ model User {
   topics      Topic[]
   contents    Content[]
   mentorLogs  MentorLog[]
+  exams       Exam[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 }
@@ -77,4 +78,47 @@ model MentorLog {
   updatedAt  DateTime @updatedAt
   @@index([userId])
   @@index([contentId])
+}
+
+model Exam {
+  id             String    @id @default(uuid())
+  courseId       String?
+  courseName     String?
+  examDate       DateTime  @default(now())
+  userId         String
+  user           User      @relation(fields: [userId], references: [clerkUserId], onDelete: Cascade)
+  wrongMCQs      String?   // JSON array of wrong MCQ questions: [{"questionId": "1", "question": "text", "userAnswer": "A", "correctAnswer": "B", "explanation": "text"}]
+  wrongShortAnswers String? // JSON array of wrong short answer questions: [{"questionId": "1", "question": "text", "userAnswer": "text", "correctAnswer": "text", "explanation": "text"}]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  @@index([userId])
+}
+
+model ExamResult {
+  id                    String   @id @default(uuid())
+  userId                String
+  courseId              String
+  courseName            String
+  examDate              String
+  difficulty            String
+  timeLimit             Int
+  timeSpent             Int
+  mcqQuestions          String
+  shortAnswerQuestions  String
+  codingProblems        String
+  mcqScore              Float
+  mcqTotal              Float
+  mcqPercentage         Float
+  shortAnswerScore      Float
+  shortAnswerTotal      Float
+  shortAnswerPercentage Float
+  codingScore           Float
+  codingTotal           Float
+  codingPercentage      Float
+  totalScore            Float
+  totalPossible         Float
+  percentage            Float
+  feedback              String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }

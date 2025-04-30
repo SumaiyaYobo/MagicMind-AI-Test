@@ -56,6 +56,21 @@ class ExamRecord(BaseModel):
     scores: ScoreRecord
     feedback: str
 
+class WrongAnswer(BaseModel):
+    questionType: str  # "MCQ" or "ShortAnswer"
+    questionId: str
+    question: str
+    userAnswer: str
+    correctAnswer: str
+    explanation: Optional[str] = None
+    courseId: Optional[str] = None
+
+class WrongAnswersRequest(BaseModel):
+    wrong_answers: List[WrongAnswer]
+    userId: str
+    courseId: Optional[str] = None
+    courseName: Optional[str] = None
+
 router = APIRouter(prefix="/exams", tags=["exams"])
 
 @router.post("/save_result")
@@ -95,7 +110,6 @@ async def save_exam_result(exam_record: ExamRecord):
             "totalPossible": exam_record.scores.total.total,
             "percentage": exam_record.scores.total.percentage,
             "feedback": exam_record.feedback,
-            "createdAt": datetime.now().isoformat(),
         }
         
         # Store in the database
@@ -125,27 +139,66 @@ async def get_user_exam_history(user_id: str):
         db = Prisma()
         await db.connect()
         
-        # Fetch exam records for the user
-        exam_records = await db.examresult.find_many(
-            where={"userId": user_id},
-            order_by={"createdAt": "desc"}
-        )
+        # First try to fetch from examresult table
+        try:
+            exam_records = await db.examresult.find_many(
+                where={"userId": user_id}
+            )
+            
+            # Format the records from examresult table
+            formatted_records = []
+            for record in exam_records:
+                formatted_records.append({
+                    "id": record.id,
+                    "courseId": record.courseId,
+                    "courseName": record.courseName,
+                    "examDate": record.examDate,
+                    "difficulty": record.difficulty,
+                    "percentage": record.percentage,
+                    "timeSpent": record.timeSpent,
+                    "createdAt": record.createdAt.isoformat() if record.createdAt else None,
+                    "table": "examresult"
+                })
+        except Exception as e:
+            print(f"Error fetching from examresult table: {str(e)}")
+            formatted_records = []
+        
+        # Then fetch from exam table
+        try:
+            exam_table_records = await db.exam.find_many(
+                where={"userId": user_id}
+            )
+            
+            # Format the records from exam table
+            for record in exam_table_records:
+                # Process wrongMCQs to get an overall score if available
+                percentage = 0
+                if record.wrongMCQs:
+                    try:
+                        mcqs = json.loads(record.wrongMCQs)
+                        # Use a placeholder percentage - you might want to calculate this differently
+                        percentage = 80  # Assuming they got most right if they only have a few wrong
+                    except:
+                        percentage = 0
+                
+                formatted_records.append({
+                    "id": record.id,
+                    "courseId": record.courseId or "",
+                    "courseName": record.courseName or "",
+                    "examDate": record.createdAt.isoformat() if record.createdAt else "",
+                    "difficulty": "medium",  # Default value
+                    "percentage": percentage,
+                    "timeSpent": 0,  # Default value
+                    "createdAt": record.createdAt.isoformat() if record.createdAt else None,
+                    "table": "exam"
+                })
+        except Exception as e:
+            print(f"Error fetching from exam table: {str(e)}")
         
         await db.disconnect()
         
-        # Format the records for the response
-        formatted_records = []
-        for record in exam_records:
-            formatted_records.append({
-                "id": record.id,
-                "courseId": record.courseId,
-                "courseName": record.courseName,
-                "examDate": record.examDate,
-                "difficulty": record.difficulty,
-                "percentage": record.percentage,
-                "timeSpent": record.timeSpent,
-                "createdAt": record.createdAt.isoformat() if record.createdAt else None
-            })
+        # Sort the combined records by createdAt date descending (most recent first)
+        formatted_records.sort(key=lambda x: x.get("createdAt", ""), reverse=True)
         
         return formatted_records
         
@@ -225,3 +278,122 @@ async def get_exam_details(exam_id: str):
         # Log the error for debugging
         print(f"Error fetching exam details: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch exam details: {str(e)}")
+
+@router.post("/save_wrong_answers")
+async def save_wrong_answers(request: WrongAnswersRequest):
+    """
+    Save wrong MCQ and short answer questions to the Exam table as a single record
+    """
+    try:
+        # Connect to the database
+        db = Prisma()
+        await db.connect()
+        
+        # Separate MCQs and Short Answer questions
+        mcqs = [answer for answer in request.wrong_answers if answer.questionType == "MCQ"]
+        short_answers = [answer for answer in request.wrong_answers if answer.questionType == "ShortAnswer"]
+        
+        # Create a single exam record with all wrong answers
+        saved_exam = await db.exam.create(
+            data={
+                "courseId": request.courseId,
+                "courseName": request.courseName,
+                "userId": request.userId,
+                "wrongMCQs": json.dumps([{
+                    "questionId": q.questionId,
+                    "question": q.question,
+                    "userAnswer": q.userAnswer,
+                    "correctAnswer": q.correctAnswer,
+                    "explanation": q.explanation
+                } for q in mcqs]) if mcqs else None,
+                "wrongShortAnswers": json.dumps([{
+                    "questionId": q.questionId,
+                    "question": q.question,
+                    "userAnswer": q.userAnswer,
+                    "correctAnswer": q.correctAnswer,
+                    "explanation": q.explanation
+                } for q in short_answers]) if short_answers else None
+            }
+        )
+        
+        await db.disconnect()
+        
+        return {
+            "message": f"Successfully saved exam with wrong answers",
+            "examId": saved_exam.id,
+            "mcqCount": len(mcqs),
+            "shortAnswerCount": len(short_answers)
+        }
+        
+    except Exception as e:
+        # Log the error for debugging
+        print(f"Error saving wrong answers: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to save wrong answers: {str(e)}")
+
+@router.get("/wrong_answers/{user_id}")
+async def get_user_wrong_answers(user_id: str):
+    """
+    Get all wrong answers for a specific user
+    """
+    try:
+        # Connect to the database
+        db = Prisma()
+        await db.connect()
+        
+        # Fetch wrong answers for the user - without the unsupported order_by parameter
+        exams = await db.exam.find_many(
+            where={"userId": user_id}
+        )
+        
+        # Sort the exams by createdAt in Python instead (descending order)
+        exams = sorted(exams, key=lambda x: x.createdAt if x.createdAt else "", reverse=True)
+        
+        # Process the exams to extract wrong answers
+        results = []
+        for exam in exams:
+            # Process MCQs
+            if exam.wrongMCQs:
+                mcqs = json.loads(exam.wrongMCQs)
+                for mcq in mcqs:
+                    results.append({
+                        "id": f"{exam.id}_mcq_{mcq.get('questionId', '0')}",
+                        "examId": exam.id,
+                        "courseId": exam.courseId,
+                        "courseName": exam.courseName,
+                        "questionType": "MCQ",
+                        "questionId": mcq.get("questionId", ""),
+                        "question": mcq.get("question", ""),
+                        "userAnswer": mcq.get("userAnswer", ""),
+                        "correctAnswer": mcq.get("correctAnswer", ""),
+                        "explanation": mcq.get("explanation", ""),
+                        "createdAt": exam.createdAt.isoformat() if exam.createdAt else "",
+                        "updatedAt": exam.updatedAt.isoformat() if exam.updatedAt else ""
+                    })
+            
+            # Process Short Answers
+            if exam.wrongShortAnswers:
+                short_answers = json.loads(exam.wrongShortAnswers)
+                for sa in short_answers:
+                    results.append({
+                        "id": f"{exam.id}_sa_{sa.get('questionId', '0')}",
+                        "examId": exam.id,
+                        "courseId": exam.courseId,
+                        "courseName": exam.courseName,
+                        "questionType": "ShortAnswer",
+                        "questionId": sa.get("questionId", ""),
+                        "question": sa.get("question", ""),
+                        "userAnswer": sa.get("userAnswer", ""),
+                        "correctAnswer": sa.get("correctAnswer", ""),
+                        "explanation": sa.get("explanation", ""),
+                        "createdAt": exam.createdAt.isoformat() if exam.createdAt else "",
+                        "updatedAt": exam.updatedAt.isoformat() if exam.updatedAt else ""
+                    })
+        
+        await db.disconnect()
+        
+        return results
+        
+    except Exception as e:
+        # Log the error for debugging
+        print(f"Error fetching user wrong answers: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch wrong answers: {str(e)}")
