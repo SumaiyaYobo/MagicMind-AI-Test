@@ -24,8 +24,8 @@ const Navbar = ({ userData }: NavbarProps) => {
               height={36}
               className="mr-2"
             />
-            <h2 className="text-xl font-bold">
-              CodeMentor
+            <h2 className="text-xl font-bold bg-gradient-to-r from-blue-500 to-indigo-600 text-transparent bg-clip-text">
+              DevGenius
             </h2>
             <span className="text-sm font-medium text-muted-foreground pl-2">
               Welcome, {firstName}!

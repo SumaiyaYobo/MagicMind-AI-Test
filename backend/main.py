@@ -10,8 +10,8 @@ from routers.practiceai import router as practiceai_router
 from routers.exams import router as exams_router
 
 app = FastAPI(
-    title="CodeMentor API",
-    description="Backend API for CodeMentor application",
+    title="DevGenius API",
+    description="Backend API for DevGenius application",
     version="1.0.0"
 )
 

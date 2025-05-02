@@ -15,7 +15,7 @@ export async function POST(request: Request) {
             body: JSON.stringify({
                 model: "gpt-4o-realtime-preview-2024-12-17",
                 voice: "verse",
-                instructions:" You are codeMentor, you are very pro at coding, your main task is to help the students with the coding challenges."
+                instructions:" You are DevGenius, you are very pro at coding, your main task is to help the students with the coding challenges."
             }),
         });
 

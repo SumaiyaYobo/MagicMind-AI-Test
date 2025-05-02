@@ -16,7 +16,7 @@ import { ToastContainer } from 'react-toastify'
 const roboto = Roboto({ weight: '400', subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: "CodeMentor",
+  title: "DevGenius",
   description: "Learn to code with AI",
 }
 
